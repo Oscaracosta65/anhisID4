@@ -2,6 +2,7 @@
 defined('_JEXEC') or die;
 
 use Joomla\CMS\Factory;
+use Joomla\CMS\HTML\HTMLHelper;
 use Joomla\CMS\Session\Session;
 use Joomla\CMS\Uri\Uri;
 use Joomla\Database\DatabaseDriver;
@@ -26,7 +27,14 @@ function leFmtDateLong(?string $date): string
 
 function lePad2(string $value): string
 {
-    return str_pad((string)(int)$value, 2, '0', STR_PAD_LEFT);
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+    if (ctype_digit($value) && (int)$value < 10) {
+        return str_pad($value, 2, '0', STR_PAD_LEFT);
+    }
+    return $value;
 }
 
 function leResolveLogo(string $stateAbrev, string $gName, string $gameId = ''): array
@@ -107,18 +115,22 @@ function leFindRepeatedFromLatest(array $latestBalls, array $previousRows): arra
             if (!isset($row[$col]) || $row[$col] === '') {
                 continue;
             }
-            $val = (string)(int)$row[$col];
-            if (in_array($val, $latestBalls, true) && !in_array($val, $repeated, true)) {
+            $val = lePad2(trim((string)$row[$col]));
+            if ($val !== '' && in_array($val, $latestBalls, true) && !in_array($val, $repeated, true)) {
                 $repeated[] = $val;
             }
         }
     }
+    sort($repeated, SORT_NATURAL);
     return $repeated;
 }
 
 function leCommaList(array $items): string
 {
-    return implode(', ', $items);
+    $clean = array_values(array_filter(array_map('trim', $items), static function ($v) {
+        return $v !== '';
+    }));
+    return empty($clean) ? '—' : implode(', ', $clean);
 }
 
 function leFetchRecentDraws(DatabaseDriver $db, string $dbCol, string $gameId, int $limit): array
@@ -193,8 +205,10 @@ function leEscapeJsString(string $value): string
     );
 }
 
-// ── Game identity ─────────────────────────────────────────────────────────────
-$gId        = isset($gId)        ? (string)$gId        : (isset($_GET['gameId']) ? htmlspecialchars(strip_tags((string)$_GET['gameId']), ENT_QUOTES, 'UTF-8') : 'ID4');
+$app   = Factory::getApplication();
+$input = $app->input;
+
+$gId        = isset($gId)        ? (string)$gId        : $input->getString('gameId', $input->getString('game_id', 'ID4'));
 $stateName  = isset($stateName)  ? (string)$stateName  : '';
 $stateAbrev = isset($stateAbrev) ? (string)$stateAbrev : '';
 $gName      = isset($gName)      ? (string)$gName      : '';
@@ -202,10 +216,12 @@ $dbCol      = isset($dbCol)      ? (string)$dbCol      : 'lottery_draws';
 $sTn        = $stateAbrev;
 
 $nodCurrentMain = 100;
-if (isset($_GET['nodCurrentMain'])) {
-    $tmp = (int)$_GET['nodCurrentMain'];
-    if ($tmp >= 10 && $tmp <= 700) {
-        $nodCurrentMain = $tmp;
+if ($input->getMethod() === 'POST' && Session::checkToken()) {
+    if ($input->post->get('fq-search', null, 'cmd') !== null) {
+        $tmp = (int)$input->post->get('nod', 100, 'int');
+        if ($tmp >= 10 && $tmp <= 700) {
+            $nodCurrentMain = $tmp;
+        }
     }
 }
 
@@ -242,11 +258,8 @@ $ballCols = ['first', 'second', 'third', 'fourth', 'fifth'];
 
 foreach ($rowsMain as $drawIdx => $row) {
     foreach ($ballCols as $col) {
-        if (!isset($row[$col]) || $row[$col] === '' || $row[$col] === null) {
-            continue;
-        }
-        $b = (string)(int)$row[$col];
-        if (!array_key_exists($b, $mainCounts)) {
+        $b = lePad2(trim((string)($row[$col] ?? '')));
+        if ($b === '' || !array_key_exists($b, $mainCounts)) {
             continue;
         }
         $mainCounts[$b]++;
@@ -258,11 +271,8 @@ foreach ($rowsMain as $drawIdx => $row) {
 
 foreach ($rows100 as $row) {
     foreach ($ballCols as $col) {
-        if (!isset($row[$col]) || $row[$col] === '' || $row[$col] === null) {
-            continue;
-        }
-        $b = (string)(int)$row[$col];
-        if (array_key_exists($b, $mainCounts100)) {
+        $b = lePad2(trim((string)($row[$col] ?? '')));
+        if ($b !== '' && array_key_exists($b, $mainCounts100)) {
             $mainCounts100[$b]++;
         }
     }
@@ -270,11 +280,8 @@ foreach ($rows100 as $row) {
 
 foreach ($window50 as $row) {
     foreach ($ballCols as $col) {
-        if (!isset($row[$col]) || $row[$col] === '' || $row[$col] === null) {
-            continue;
-        }
-        $b = (string)(int)$row[$col];
-        if (array_key_exists($b, $counts50)) {
+        $b = lePad2(trim((string)($row[$col] ?? '')));
+        if ($b !== '' && array_key_exists($b, $counts50)) {
             $counts50[$b]++;
         }
     }
@@ -282,11 +289,8 @@ foreach ($window50 as $row) {
 
 foreach ($window300 as $row) {
     foreach ($ballCols as $col) {
-        if (!isset($row[$col]) || $row[$col] === '' || $row[$col] === null) {
-            continue;
-        }
-        $b = (string)(int)$row[$col];
-        if (array_key_exists($b, $counts300)) {
+        $b = lePad2(trim((string)($row[$col] ?? '')));
+        if ($b !== '' && array_key_exists($b, $counts300)) {
             $counts300[$b]++;
         }
     }
@@ -299,7 +303,7 @@ $mainChartValues100 = [];
 $mainRecencyValues  = [];
 
 for ($i = $mainMin; $i <= $mainMax; $i++) {
-    $key                  = (string)$i;
+    $key                  = ($i < 10) ? '0' . $i : (string)$i;
     $mainChartValues[]    = (int)($mainCounts[$key] ?? 0);
     $mainChartValues100[] = (int)($mainCounts100[$key] ?? 0);
     $rIdx                 = $mainLastSeenIndex[$key] ?? null;
@@ -331,8 +335,9 @@ $latestRow   = $rowsMain[0] ?? null;
 $latestBalls = [];
 if ($latestRow) {
     foreach ($ballCols as $col) {
-        if (isset($latestRow[$col]) && $latestRow[$col] !== '') {
-            $latestBalls[] = (string)(int)$latestRow[$col];
+        $bv = lePad2(trim((string)($latestRow[$col] ?? '')));
+        if ($bv !== '') {
+            $latestBalls[] = $bv;
         }
     }
 }
@@ -372,23 +377,18 @@ if (count($windowShiftIn) > 0) {
     $windowChangeNarrative = 'The top 10 numbers are consistent between the 50-draw and 300-draw windows, indicating stable frequency patterns.';
 }
 
-// ── Draw history rows (5 most recent) ─────────────────────────────────────────
+$drawDate = (string)($latestRow['draw_date'] ?? '');
 $drawHistoryRows = [];
-for ($hi = 0; $hi < 5; $hi++) {
-    if (!isset($rowsMain[$hi])) {
-        break;
+if ($drawDate !== '' && count($latestBalls) > 0) {
+    foreach ($latestBalls as $ball) {
+        $prevDate = leGetPreviousOccurrenceDate($db, $dbCol, $gId, $drawDate, $ball);
+        $drawsAgo = leGetDrawingsSinceDate($db, $dbCol, $gId, $prevDate, $drawDate);
+        $drawHistoryRows[] = [
+            'label'    => $ball,
+            'prevDate' => $prevDate,
+            'drawsAgo' => $drawsAgo,
+        ];
     }
-    $hRow   = $rowsMain[$hi];
-    $hBalls = [];
-    foreach ($ballCols as $col) {
-        $hBalls[] = (isset($hRow[$col]) && $hRow[$col] !== '')
-            ? lePad2((string)(int)$hRow[$col])
-            : '—';
-    }
-    $drawHistoryRows[] = [
-        'date'  => leFmtDate($hRow['draw_date'] ?? null),
-        'balls' => $hBalls,
-    ];
 }
 
 // ── Hero display ──────────────────────────────────────────────────────────────
@@ -397,7 +397,7 @@ $heroNextDraw    = leFmtDateLong($latestRow['next_draw_date'] ?? null);
 $heroNextJackpot = htmlspecialchars((string)($latestRow['next_jackpot'] ?? '—'), ENT_QUOTES, 'UTF-8');
 $heroLatestBalls = [];
 foreach ($ballCols as $col) {
-    $heroLatestBalls[] = lePad2((string)(int)($latestRow[$col] ?? 0));
+    $heroLatestBalls[] = lePad2(trim((string)($latestRow[$col] ?? '')));
 }
 $heroInsight  = 'Latest verified draw and recent number behavior at a glance. Review the most active numbers, quiet stretches, and full historical frequency before moving into deeper SKAI analysis.';
 $overviewNote = 'Frequency shows historical occurrence within the selected window. It can help identify recent concentration and quiet periods, but it should be interpreted as context rather than prediction.';
@@ -419,19 +419,21 @@ $routeArchives = '/lottery-archives-pick5?gId=' . $gIdEncoded . '&stateName=' . 
 $routeLowest  = '/lowest-drawn-number-analysis?gId=' . $gIdEncoded . '&stateName=' . $stateNameEnc . '&gName=' . $gNameEnc . '&sTn=' . $stAbEnc;
 
 // ── Page meta ─────────────────────────────────────────────────────────────────
-$gameFull     = htmlspecialchars(trim($gName ?: $gId), ENT_QUOTES, 'UTF-8');
-$pageTitle    = $gameFull . ' Number Frequency Analysis | LottoExpert';
-$metaDesc     = 'Explore ' . $gameFull . ' number frequency, recency, and draw history. Analytical lottery tools powered by LottoExpert for informed, data-driven play.';
-$canonicalUrl = defined('JPATH_ROOT') ? htmlspecialchars(Uri::current(), ENT_QUOTES, 'UTF-8') : '';
+$gameFullRaw  = trim($gName ?: $gId);
+$gameFull     = htmlspecialchars($gameFullRaw, ENT_QUOTES, 'UTF-8');
+$pageTitle    = $gameFullRaw . ' Number Frequency Analysis | LottoExpert.net';
+$metaDesc     = 'Explore ' . $gameFullRaw . ' number frequency, recency, and draw history. Analytical tools at LottoExpert.net for data-driven review.';
+$canonicalNoQuery = Uri::getInstance()->toString(['scheme', 'host', 'port', 'path']);
+$canonicalUrl = htmlspecialchars($canonicalNoQuery, ENT_QUOTES, 'UTF-8');
 $jsonLdArr    = [
     '@context'    => 'https://schema.org',
     '@type'       => 'WebPage',
-    'name'        => strip_tags($gameFull) . ' Number Frequency Analysis',
-    'description' => strip_tags($metaDesc),
-    'url'         => strip_tags($canonicalUrl),
+    'name'        => $gameFullRaw . ' Number Frequency Analysis | LottoExpert.net',
+    'description' => $metaDesc,
+    'url'         => $canonicalNoQuery,
     'publisher'   => [
         '@type' => 'Organization',
-        'name'  => 'LottoExpert',
+        'name'  => 'LottoExpert.net',
         'url'   => 'https://lottoexpert.net',
     ],
 ];
@@ -442,7 +444,7 @@ $quietSetFlip  = array_flip($quietestKeys);
 $activeSetFlip = array_flip($topActiveKeys);
 $tableRows     = [];
 for ($i = $mainMin; $i <= $mainMax; $i++) {
-    $key  = (string)$i;
+    $key  = ($i < 10) ? '0' . $i : (string)$i;
     $freq = (int)($mainCounts[$key] ?? 0);
     $lsi  = $mainLastSeenIndex[$key] ?? null;
     [$agoNum, $agoLabel] = leDrawingsAgoLabel($lsi, $nodCurrentMain);
@@ -461,7 +463,7 @@ for ($i = $mainMin; $i <= $mainMax; $i++) {
         $types[] = 'other';
     }
     $tableRows[] = [
-        'num'      => lePad2($key),
+        'num'      => $key,
         'freq'     => $freq,
         'agoNum'   => $agoNum,
         'agoLabel' => $agoLabel,
@@ -470,22 +472,16 @@ for ($i = $mainMin; $i <= $mainMax; $i++) {
     ];
 }
 
-// ── Form token ────────────────────────────────────────────────────────────────
-$formToken     = defined('JPATH_ROOT') ? Factory::getApplication()->getFormToken() : '_token';
 $formActionUrl = $canonicalUrl;
+
+$doc   = Factory::getDocument();
+$doc->setTitle($pageTitle);
+$doc->setMetaData('description', $metaDesc);
+$doc->addCustomTag('<link rel="canonical" href="' . htmlspecialchars($canonicalNoQuery, ENT_QUOTES, 'UTF-8') . '" />');
+$doc->addCustomTag('<link rel="alternate" hreflang="en" href="' . htmlspecialchars($canonicalNoQuery, ENT_QUOTES, 'UTF-8') . '" />');
+$doc->addCustomTag('<link rel="alternate" hreflang="x-default" href="' . htmlspecialchars($canonicalNoQuery, ENT_QUOTES, 'UTF-8') . '" />');
+$doc->addCustomTag('<script type="application/ld+json">' . $jsonLd . '</script>');
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?php echo htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8'); ?></title>
-<meta name="description" content="<?php echo htmlspecialchars($metaDesc, ENT_QUOTES, 'UTF-8'); ?>">
-<?php if ($canonicalUrl): ?>
-<link rel="canonical" href="<?php echo $canonicalUrl; ?>">
-<link rel="alternate" hreflang="en" href="<?php echo $canonicalUrl; ?>">
-<?php endif; ?>
-<script type="application/ld+json"><?php echo $jsonLd; ?></script>
 <style>
 :root {
     --skai-blue: #1C66FF;
@@ -1263,6 +1259,16 @@ table.skai-table tbody tr:hover {
     flex-shrink: 0;
 }
 
+.skai-pill--shift-in {
+    background: var(--success-green);
+    color: #fff;
+    border-color: transparent;
+}
+
+.skai-pill--shift-out {
+    opacity: .5;
+}
+
 .skai-checkbox {
     width: 16px;
     height: 16px;
@@ -1567,8 +1573,8 @@ table.skai-table tbody tr:hover {
     }
 }
 </style>
-</head>
-<body class="skai-page">
+
+<div class="skai-page">
 
 <!-- ── Hero ──────────────────────────────────────────────────────────────── -->
 <section class="skai-hero">
@@ -1710,19 +1716,26 @@ table.skai-table tbody tr:hover {
         <div class="skai-two-col">
             <div class="skai-card">
                 <div class="skai-card-head skai-card-head--horizon">
-                    <h3>Recent Draw History</h3>
+                    <h3>Current Draw Context</h3>
+                    <span class="skai-card-sub">Previous appearance and spacing for each latest drawn number</span>
                 </div>
                 <div class="skai-card-body">
                     <?php if (count($drawHistoryRows) > 0): ?>
                     <div class="skai-history-list">
-                        <?php foreach ($drawHistoryRows as $idx => $hRow): ?>
+                        <?php foreach ($drawHistoryRows as $hRow): ?>
                         <div class="skai-history-item">
-                            <div class="skai-history-name">#<?php echo (int)($idx + 1); ?></div>
-                            <div class="skai-history-date"><?php echo htmlspecialchars($hRow['date'], ENT_QUOTES, 'UTF-8'); ?></div>
+                            <div class="skai-history-name">
+                                <span class="skai-pill skai-pill--main"><?php echo htmlspecialchars($hRow['label'], ENT_QUOTES, 'UTF-8'); ?></span>
+                            </div>
+                            <div class="skai-history-date">
+                                <?php if (!empty($hRow['prevDate'])): ?>
+                                    Previously seen <?php echo htmlspecialchars(leFmtDateLong((string)$hRow['prevDate']), ENT_QUOTES, 'UTF-8'); ?>
+                                <?php else: ?>
+                                    No previous appearance found in loaded records
+                                <?php endif; ?>
+                            </div>
                             <div class="skai-history-badge">
-                                <?php foreach ($hRow['balls'] as $hBall): ?>
-                                <span class="skai-ball skai-ball--main" style="width:32px;height:32px;font-size:11px;"><?php echo htmlspecialchars($hBall, ENT_QUOTES, 'UTF-8'); ?></span>
-                                <?php endforeach; ?>
+                                <?php echo ($hRow['drawsAgo'] !== null) ? (int)$hRow['drawsAgo'] . ' drws ago' : '—'; ?>
                             </div>
                         </div>
                         <?php endforeach; ?>
@@ -1743,7 +1756,7 @@ table.skai-table tbody tr:hover {
                             <div class="skai-shift-label">Last 50 Draws &mdash; Top 10</div>
                             <div class="skai-shift-text">
                                 <?php foreach ($top50 as $sk): ?>
-                                <span class="skai-pill--main" style="<?php echo in_array($sk, $windowShiftIn) ? 'background:var(--success-green);' : ''; ?>"><?php echo htmlspecialchars(lePad2($sk), ENT_QUOTES, 'UTF-8'); ?></span>
+                                <span class="skai-pill--main<?php echo in_array($sk, $windowShiftIn) ? ' skai-pill--shift-in' : ''; ?>"><?php echo htmlspecialchars(lePad2($sk), ENT_QUOTES, 'UTF-8'); ?></span>
                                 <?php endforeach; ?>
                             </div>
                         </div>
@@ -1751,7 +1764,7 @@ table.skai-table tbody tr:hover {
                             <div class="skai-shift-label">Last 300 Draws &mdash; Top 10</div>
                             <div class="skai-shift-text">
                                 <?php foreach ($top300 as $sk): ?>
-                                <span class="skai-pill--main" style="<?php echo in_array($sk, $windowShiftOut) ? 'opacity:.5;' : ''; ?>"><?php echo htmlspecialchars(lePad2($sk), ENT_QUOTES, 'UTF-8'); ?></span>
+                                <span class="skai-pill--main<?php echo in_array($sk, $windowShiftOut) ? ' skai-pill--shift-out' : ''; ?>"><?php echo htmlspecialchars(lePad2($sk), ENT_QUOTES, 'UTF-8'); ?></span>
                                 <?php endforeach; ?>
                             </div>
                         </div>
@@ -1808,19 +1821,19 @@ table.skai-table tbody tr:hover {
     </div>
     <div class="skai-section-body">
         <div class="skai-controls">
-            <form method="get" action="<?php echo $formActionUrl; ?>">
-                <input type="hidden" name="<?php echo htmlspecialchars($formToken, ENT_QUOTES, 'UTF-8'); ?>" value="1">
+            <form method="post" action="<?php echo htmlspecialchars($formActionUrl, ENT_QUOTES, 'UTF-8'); ?>#tables">
                 <div class="skai-controls-row">
                     <div class="skai-controls-left">
-                        <label for="nodCurrentMain">Analysis Window</label>
-                        <select id="nodCurrentMain" name="nodCurrentMain" class="skai-select">
+                        <label for="nod">Analysis Window</label>
+                        <select id="nod" name="nod" class="skai-select">
                             <?php for ($w = 10; $w <= 700; $w += 5): ?>
-                            <option value="<?php echo (int)$w; ?>"<?php echo ($w === $nodCurrentMain) ? ' selected' : ''; ?>>Last <?php echo (int)$w; ?> draws</option>
+                            <option value="<?php echo (int)$w; ?>"<?php echo ($w === $nodCurrentMain) ? ' selected' : ''; ?>><?php echo (int)$w; ?> draws</option>
                             <?php endfor; ?>
                         </select>
                     </div>
                     <div class="skai-controls-right">
-                        <button type="submit" class="skai-button">Apply</button>
+                        <button type="submit" name="fq-search" value="1" class="skai-button">Update window</button>
+                        <?php echo HTMLHelper::_('form.token'); ?>
                     </div>
                 </div>
             </form>
@@ -1893,30 +1906,30 @@ table.skai-table tbody tr:hover {
     <div class="skai-section-body">
         <div class="skai-tool-grid">
             <div class="skai-tool">
-                <div class="skai-tool-head" style="border-left:4px solid var(--skai-blue);">
-                    <h3>SKAI AI Analysis</h3>
+                <div class="skai-tool-head skai-card-head--horizon">
+                    SKAI AI Analysis
                 </div>
                 <div class="skai-tool-body">
                     <p class="skai-tool-copy">SKAI applies pattern recognition to historical draw sequences, identifying statistical anomalies and concentration windows across the number pool.</p>
-                    <a href="<?php echo htmlspecialchars($routeSkai, ENT_QUOTES, 'UTF-8'); ?>" class="skai-tool-cta">Open SKAI &rarr;</a>
+                    <a href="<?php echo htmlspecialchars($routeSkai, ENT_QUOTES, 'UTF-8'); ?>" class="skai-tool-cta">Open SKAI Analysis</a>
                 </div>
             </div>
             <div class="skai-tool">
-                <div class="skai-tool-head" style="border-left:4px solid #7B4CFF;">
-                    <h3>AI-Powered Predictions</h3>
+                <div class="skai-tool-head skai-card-head--radiant">
+                    AI-Powered Predictions
                 </div>
                 <div class="skai-tool-body">
                     <p class="skai-tool-copy">Multi-model AI analysis combining neural network pattern detection with long-range historical frequency data to produce statistically grounded number sets.</p>
-                    <a href="<?php echo htmlspecialchars($routeAi, ENT_QUOTES, 'UTF-8'); ?>" class="skai-tool-cta">Open AI Tool &rarr;</a>
+                    <a href="<?php echo htmlspecialchars($routeAi, ENT_QUOTES, 'UTF-8'); ?>" class="skai-tool-cta">Open AI Predictions</a>
                 </div>
             </div>
             <div class="skai-tool">
-                <div class="skai-tool-head" style="border-left:4px solid var(--caution-amber);">
-                    <h3>Skip &amp; Hit Analysis</h3>
+                <div class="skai-tool-head skai-card-head--ember">
+                    Skip &amp; Hit Analysis
                 </div>
                 <div class="skai-tool-body">
                     <p class="skai-tool-copy">Tracks the skip intervals between appearances for each number across the full draw history, revealing cyclical behavior and extended quiet streaks.</p>
-                    <a href="<?php echo htmlspecialchars($routeSkipHit, ENT_QUOTES, 'UTF-8'); ?>" class="skai-tool-cta">Open Skip &amp; Hit &rarr;</a>
+                    <a href="<?php echo htmlspecialchars($routeSkipHit, ENT_QUOTES, 'UTF-8'); ?>" class="skai-tool-cta">Open Skip &amp; Hit</a>
                 </div>
             </div>
         </div>
@@ -1981,7 +1994,7 @@ table.skai-table tbody tr:hover {
         }
         var primary = document.createElement('script');
         primary.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
-        primary.integrity = 'sha384-mhp2E+BLMiZLe7rtu0ioQ7nYbXpQLp6mU7SnMcA7bqMVq+B6MZ0FPhcjCBMqHrQ';
+        primary.integrity = 'sha384-OLBgp1GsljhM2TJ+sbHjaiH9txEUvgdDTAzHv2P24donTt6/529l+9Ua0vFImLlb';
         primary.crossOrigin = 'anonymous';
         primary.onload = function () { done(); };
         primary.onerror = function () {
@@ -2255,5 +2268,6 @@ table.skai-table tbody tr:hover {
     }
 }());
 </script>
-</body>
-</html>
+
+</div>
+<?php echo HTMLHelper::_('content.prepare', '{loadposition Pick5Wheels}'); ?>
