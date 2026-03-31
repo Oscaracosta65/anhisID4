@@ -70,8 +70,9 @@ function leInitRange(int $min, int $max): array
     $counts        = [];
     $lastSeenIndex = [];
     for ($i = $min; $i <= $max; $i++) {
-        $counts[(string)$i]        = 0;
-        $lastSeenIndex[(string)$i] = null;
+        $k                 = ($i < 10) ? '0' . $i : (string) $i;
+        $counts[$k]        = 0;
+        $lastSeenIndex[$k] = null;
     }
     return [$counts, $lastSeenIndex];
 }
@@ -413,7 +414,7 @@ $stAbEnc      = rawurlencode($stateAbrev);
 $routeSkai    = '/picking-winning-numbers/artificial-intelligence/skai-lottery-prediction?gameId=' . $gIdEncoded;
 $routeAi      = '/picking-winning-numbers/artificial-intelligence/ai-powered-predictions?game_id=' . $gIdEncoded;
 $routeMcmc    = '/picking-winning-numbers/artificial-intelligence/markov-chain-monte-carlo-mcmc-analysis?gameId=' . $gIdEncoded;
-$routeHeatmap = '/all-lottery-heatmaps?gId=' . $gIdEncoded . '&stateName=' . $stateNameEnc . '&gName=' . $gNameEnc . '&sTn=' . $stAbEnc;
+$routeHeatmap = '/all-lottery-heatmaps?gameId=' . $gIdEncoded;
 $routeSkipHit = '/picking-winning-numbers/artificial-intelligence/skip-and-hit-analysis?game_id=' . $gIdEncoded;
 $routeArchives = '/lottery-archives-pick5?gId=' . $gIdEncoded . '&stateName=' . $stateNameEnc . '&gName=' . $gNameEnc . '&sTn=' . $stAbEnc;
 $routeLowest  = '/lowest-drawn-number-analysis?gId=' . $gIdEncoded . '&stateName=' . $stateNameEnc . '&gName=' . $gNameEnc . '&sTn=' . $stAbEnc;
@@ -1976,13 +1977,13 @@ table.skai-table tbody tr:hover {
 
     var chartData = {
         topActiveLabels:  <?php echo json_encode(array_values($topActiveLabels),  JSON_UNESCAPED_UNICODE); ?>,
-        topActiveValues:  <?php echo json_encode(array_values($topActiveValues)); ?>,
+        topActiveValues:  <?php echo json_encode(array_values($topActiveValues), JSON_NUMERIC_CHECK); ?>,
         quietLabels:      <?php echo json_encode(array_values($quietestLabels),   JSON_UNESCAPED_UNICODE); ?>,
-        quietValues:      <?php echo json_encode(array_values($quietestValues)); ?>,
+        quietValues:      <?php echo json_encode(array_values($quietestValues), JSON_NUMERIC_CHECK); ?>,
         mainLabels:       <?php echo json_encode($mainChartLabels,                JSON_UNESCAPED_UNICODE); ?>,
-        mainValues:       <?php echo json_encode($mainChartValues); ?>,
-        mainValues100:    <?php echo json_encode($mainChartValues100); ?>,
-        mainRecencyValues:<?php echo json_encode($mainRecencyValues); ?>
+        mainValues:       <?php echo json_encode($mainChartValues, JSON_NUMERIC_CHECK); ?>,
+        mainValues100:    <?php echo json_encode($mainChartValues100, JSON_NUMERIC_CHECK); ?>,
+        mainRecencyValues:<?php echo json_encode($mainRecencyValues, JSON_NUMERIC_CHECK); ?>
     };
 
     var nodCurrentMain = <?php echo (int)$nodCurrentMain; ?>;
